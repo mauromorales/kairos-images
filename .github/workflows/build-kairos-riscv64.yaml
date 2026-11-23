@@ -255,6 +255,9 @@ jobs:
         run: |
           version="${{ inputs.release_version }}"
           tag="kairos-riscv64-v${version}"
+          kairos="$(grep -oP '^ARG KAIROS_VERSION=\K.*' nodes/kairos-riscv64/kairos.Dockerfile)"
+          KUBERNETES_VERSION="${{ steps.artifact.outputs.name }}"
+          KUBERNETES_VERSION="v${KUBERNETES_VERSION##*-k3sv}"
           img_ref="quay.io/mauromorales/kairos-riscv64:${{ steps.artifact.outputs.oci }}-img"
           raw_sha256="$(cut -d' ' -f1 output/*.raw.sha256)"
 
@@ -269,8 +272,8 @@ jobs:
           gh release create "$tag" \
             output/${{ steps.artifact.outputs.name }}.iso \
             output/${{ steps.artifact.outputs.name }}.iso.sha256 \
-            --title "Kairos riscv64 v${version} (Ubuntu 24.04, Kairos v4.4.0, k3s v1.36.3)" \
-            --notes "Experimental riscv64 Kairos image on Ubuntu 24.04, built from Kairos v4.4.0 with k3s v1.36.3 from the CARV-ICS-FORTH fork (not an official k3s release). See nodes/kairos-riscv64/README.md for what this is and how to test it." \
+            --title "Kairos riscv64 v${version} (Ubuntu 24.04, Kairos ${kairos}, k3s ${KUBERNETES_VERSION})" \
+            --notes "Experimental riscv64 Kairos image on Ubuntu 24.04, built from Kairos ${kairos} with k3s ${KUBERNETES_VERSION} from the CARV-ICS-FORTH fork (not an official k3s release). See nodes/kairos-riscv64/README.md for what this is and how to test it." \
             "${prerelease_flag[@]}"
 
           # Raw image isn't attached above -- see the "Push RAW artifact to

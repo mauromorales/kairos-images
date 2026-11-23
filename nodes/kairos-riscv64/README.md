@@ -72,12 +72,12 @@ A release publishes two artifacts:
 - **Raw disk image**, for flashing straight to hardware or a VM disk with no
   installer step. It routinely exceeds GitHub's 2 GiB release-asset limit, so
   it isn't attached to the release. It's published instead as a scratch OCI
-  artifact on Quay, `quay.io/mauromorales/kairos-riscv64:<version>-img` —
+  artifact on Quay, `quay.io/mauromorales/kairos-riscv64:ubuntu-24.04-standard-riscv64-generic-<version>-k3sv<k3s>-img` (releases v0.1.2 and v0.1.3 used the older `<version>-img` tag, still on Quay) —
   the same shape [`kairos-io/kairos-factory-action`](https://github.com/kairos-io/kairos-factory-action)
   uses for every other node's raw builds. Pull it back out with Docker:
 
   ```bash
-  export IMAGE=quay.io/mauromorales/kairos-riscv64:<version>-img
+  export IMAGE=quay.io/mauromorales/kairos-riscv64:ubuntu-24.04-standard-riscv64-generic-<version>-k3sv<k3s>-img
   container=$(docker create "$IMAGE" noop)   # scratch image: throwaway command, never executed
   docker cp "$container:/output/." .
   docker rm "$container"

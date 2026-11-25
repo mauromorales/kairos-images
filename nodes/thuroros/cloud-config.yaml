@@ -107,7 +107,8 @@ stages:
                         key = json.load(f).get("mowa_api_key")
                 except (FileNotFoundError, json.JSONDecodeError, OSError):
                     key = None
-                if isinstance(key, str) and key.strip():
+                # ASCII only: a non-latin-1 header value fails inside requests.
+                if isinstance(key, str) and key.strip().isascii() and key.strip():
                     headers["Authorization"] = key.strip()
                 return headers
 
@@ -167,6 +168,9 @@ stages:
                     else:
                         print(f"✅ Doorbell message sent successfully to '{to}'!")
 
+                except requests.exceptions.InvalidHeader:
+                    # The exception text holds the header value. Never print it.
+                    print("❌ The mowa API key is not a valid header value")
                 except requests.exceptions.ConnectionError:
                     print("❌ Connection error: Could not connect to polaris.local")
                 except requests.exceptions.Timeout:
@@ -241,12 +245,12 @@ stages:
             def save_config(cfg):
                 os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
                 tmp = CONFIG_PATH + ".tmp"
-                with open(tmp, "w") as f:
+                # May hold a plaintext MQTT password and the mowa API key. Root-only
+                # from the moment it is created.
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    os.fchmod(f.fileno(), 0o600)  # a leftover .tmp keeps its old mode
                     json.dump(cfg, f, ensure_ascii=False)
-                # May hold a plaintext MQTT password. Root-only, set before the
-                # rename so the file is never briefly world-readable under its
-                # final name.
-                os.chmod(tmp, 0o600)
                 os.replace(tmp, CONFIG_PATH)  # atomic
 
             def render(cfg, saved=False):
@@ -303,7 +307,7 @@ stages:
               <p class="hint">{password_hint}</p>
 
               <label for="mowa_api_key">mowa API key</label>
-              <input type="password" id="mowa_api_key" name="mowa_api_key" value="" placeholder="{key_placeholder}">
+              <input type="password" id="mowa_api_key" name="mowa_api_key" autocomplete="new-password" value="" placeholder="{key_placeholder}">
               <p class="hint">{key_hint}</p>
 
               <button type="submit">Save</button>

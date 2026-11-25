@@ -269,17 +269,10 @@ jobs:
           if [[ "$version" =~ (alpha|beta|rc) ]]; then
             prerelease_flag=(--prerelease)
           fi
-          gh release create "$tag" \
-            output/${{ steps.artifact.outputs.name }}.iso \
-            output/${{ steps.artifact.outputs.name }}.iso.sha256 \
-            --title "Kairos riscv64 v${version} (Ubuntu 24.04, Kairos ${kairos}, k3s ${KUBERNETES_VERSION})" \
-            --notes "Experimental riscv64 Kairos image on Ubuntu 24.04, built from Kairos ${kairos} with k3s ${KUBERNETES_VERSION} from the CARV-ICS-FORTH fork (not an official k3s release). See nodes/kairos-riscv64/README.md for what this is and how to test it." \
-            "${prerelease_flag[@]}"
-
-          # Raw image isn't attached above -- see the "Push RAW artifact to
-          # Quay" step. Append how to get it back out.
+          # Build the full notes first, so the release is created once and
+          # stays a draft. Mauro publishes it by hand.
           {
-            printf '%s\n\n' "$(gh release view "$tag" --json body -q .body)"
+            printf 'Experimental riscv64 Kairos image on Ubuntu 24.04, built from Kairos %s with k3s %s from the CARV-ICS-FORTH fork (not an official k3s release). See nodes/kairos-riscv64/README.md for what this is and how to test it.\n\n' "$kairos" "$KUBERNETES_VERSION"
             printf '## Raw disk image\n\n'
             printf 'A raw disk image is also published, for flashing straight to hardware without going through the ISO installer. It exceeds GitHub'"'"'s 2 GiB release-asset limit, so it is not attached here -- it is published as an OCI artifact on Quay instead:\n\n'
             printf '`%s`\n\n' "$img_ref"
@@ -291,4 +284,11 @@ jobs:
             printf 'docker rm "$container"\n'
             printf '```\n\n'
             printf 'The `.raw` file is now in the current directory, ready to flash (`dd`, Balena Etcher, etc). SHA256: `%s`\n' "$raw_sha256"
-          } | gh release edit "$tag" --notes-file -
+          } > notes.md
+          gh release create "$tag" \
+            output/${{ steps.artifact.outputs.name }}.iso \
+            output/${{ steps.artifact.outputs.name }}.iso.sha256 \
+            --draft \
+            --title "Kairos riscv64 v${version} (Ubuntu 24.04, Kairos ${kairos}, k3s ${KUBERNETES_VERSION})" \
+            --notes-file notes.md \
+            "${prerelease_flag[@]}"

@@ -61,6 +61,7 @@ This node isn't wired into the shared `v*` release pipeline
 experimental to sit alongside the maintained nodes there. A release is a
 manual `workflow_dispatch` run of `build-kairos-riscv64.yaml` with a
 `release_version` input, not a tag push — see the workflow file for why.
+The run creates the GitHub Release as a draft. It stays unpublished until a person publishes it.
 Every `push`/`pull_request` touching this node also runs the build to
 validate changes, without publishing anything.
 

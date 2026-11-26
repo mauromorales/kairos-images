@@ -73,10 +73,10 @@ RUN curl -fL -o /usr/bin/k3s "https://github.com/CARV-ICS-FORTH/k3s/releases/dow
     INSTALL_K3S_SKIP_SELINUX_RPM=true /tmp/k3s-install.sh && rm -f /tmp/k3s-install.sh
 # k0s, from our own riscv64 build. provider-kairos finds it in /usr/bin and reads the
 # `k0s:` and `k0s-worker:` stanzas of the cloud-config. Both k3s and k0s are in the image.
-RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}"
-RUN echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c -
-RUN chmod +x /usr/bin/k0s
-# The cloud-config `k3s:` stanza is read by provider-kairos at boot.
+RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}" && \
+    echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c - && \
+    chmod +x /usr/bin/k0s
+# The cloud-config `k3s:` or `k0s:` stanza is read by provider-kairos at boot.
 RUN mkdir -p /system/providers && \
     curl -fL "https://github.com/kairos-io/kairos/releases/download/${KAIROS_VERSION}/provider-kairos-${KAIROS_VERSION}-linux-riscv64.tar.gz" \
       | tar -xz -O provider-kairos > /system/providers/agent-provider-kairos && \

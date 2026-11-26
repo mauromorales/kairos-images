@@ -95,6 +95,23 @@ stages:
                     return None
                 return {"username": user, "password": cfg.get("mqtt_password", "")}
 
+            def mowa_headers():
+                """Request headers for mowa. The optional mowa_api_key comes from
+                the same persisted config as to/message. It is sent raw in the
+                Authorization header, with no "Bearer " prefix, because that is
+                what mowa compares with its api_key. With no key set the header
+                is left out, which a mowa with no api_key accepts."""
+                headers = {"Content-Type": "application/json"}
+                try:
+                    with open(CONFIG_PATH) as f:
+                        key = json.load(f).get("mowa_api_key")
+                except (FileNotFoundError, json.JSONDecodeError, OSError):
+                    key = None
+                # ASCII only: a non-latin-1 header value fails inside requests.
+                if isinstance(key, str) and key.strip().isascii() and key.strip():
+                    headers["Authorization"] = key.strip()
+                return headers
+
             def mqtt_publish_safe(topic, payload, retain=False):
                 """One bounded MQTT publish. Never allowed to affect the iMessage
                 path below -- same resilience shape as notify()'s POST: log and
@@ -126,11 +143,8 @@ stages:
                     "message": message
                 }
                 
-                # Headers for JSON content
-                headers = {
-                    "Content-Type": "application/json"
-                }
-                
+                headers = mowa_headers()
+
                 try:
                     # Send POST request. mowa relays synchronously via Messages,
                     # whose AppleScript bridge can occasionally hang (default
@@ -154,6 +168,9 @@ stages:
                     else:
                         print(f"✅ Doorbell message sent successfully to '{to}'!")
 
+                except requests.exceptions.InvalidHeader:
+                    # The exception text holds the header value. Never print it.
+                    print("❌ The mowa API key is not a valid header value")
                 except requests.exceptions.ConnectionError:
                     print("❌ Connection error: Could not connect to polaris.local")
                 except requests.exceptions.Timeout:
@@ -186,7 +203,7 @@ stages:
             """Tiny config UI for the doorbell, served at http://thuroros.local:8080/doorbell
 
             Lets you pick who gets notified (admin/family), change the message text,
-            and set the MQTT broker credential, all without redeploying. Writes the
+            and set the MQTT broker credential and the mowa API key, all without redeploying. Writes the
             same config file the doorbell service reads.
             """
             import json
@@ -222,17 +239,18 @@ stages:
                     "message": message,
                     "mqtt_user": cfg.get("mqtt_user") or "",
                     "mqtt_password_set": bool(cfg.get("mqtt_password")),
+                    "mowa_api_key_set": bool(cfg.get("mowa_api_key")),
                 }
 
             def save_config(cfg):
                 os.makedirs(os.path.dirname(CONFIG_PATH), exist_ok=True)
                 tmp = CONFIG_PATH + ".tmp"
-                with open(tmp, "w") as f:
+                # May hold a plaintext MQTT password and the mowa API key. Root-only
+                # from the moment it is created.
+                fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+                with os.fdopen(fd, "w") as f:
+                    os.fchmod(f.fileno(), 0o600)  # a leftover .tmp keeps its old mode
                     json.dump(cfg, f, ensure_ascii=False)
-                # May hold a plaintext MQTT password. Root-only, set before the
-                # rename so the file is never briefly world-readable under its
-                # final name.
-                os.chmod(tmp, 0o600)
                 os.replace(tmp, CONFIG_PATH)  # atomic
 
             def render(cfg, saved=False):
@@ -246,6 +264,12 @@ stages:
                     "Leave blank to keep the current password."
                     if cfg["mqtt_password_set"]
                     else "No password set: MQTT connects anonymously."
+                )
+                key_placeholder = "(unchanged)" if cfg["mowa_api_key_set"] else ""
+                key_hint = (
+                    "Leave blank to keep the current key."
+                    if cfg["mowa_api_key_set"]
+                    else "No key set: requests to mowa carry no credential."
                 )
                 return f"""<!DOCTYPE html>
             <html lang="en">
@@ -281,6 +305,10 @@ stages:
               <label for="mqtt_password">MQTT password</label>
               <input type="password" id="mqtt_password" name="mqtt_password" value="" placeholder="{password_placeholder}">
               <p class="hint">{password_hint}</p>
+
+              <label for="mowa_api_key">mowa API key</label>
+              <input type="password" id="mowa_api_key" name="mowa_api_key" autocomplete="new-password" value="" placeholder="{key_placeholder}">
+              <p class="hint">{key_hint}</p>
 
               <button type="submit">Save</button>
             </form>
@@ -341,6 +369,11 @@ stages:
                             # longer exists.
                             cfg.pop("mqtt_user", None)
                             cfg.pop("mqtt_password", None)
+
+                        # Blank keeps the current key, like the password above.
+                        mowa_api_key = form.get("mowa_api_key", [""])[0].strip()
+                        if mowa_api_key:
+                            cfg["mowa_api_key"] = mowa_api_key
                     save_config(cfg)
                     # Post/Redirect/Get so a refresh doesn't resubmit
                     self.send_response(303)

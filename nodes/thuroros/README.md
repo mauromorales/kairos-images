@@ -131,9 +131,15 @@ can hold a plaintext credential.
 - **`mqtt_user`** / **`mqtt_password`** (optional): only needed if the Mosquitto
   broker requires authentication. Unset means an anonymous MQTT connection.
 
+- **`mowa_api_key`** (optional): sent as the raw `Authorization` header of the
+  request to mowa. Set it here before you set `api_key` in mowa: mowa with no
+  `api_key` accepts any header, and the other order loses presses. Unset means
+  no header. It is never in this repository.
+
 Everything above changes at `http://thuroros.local:8080/doorbell`. The password
-field is never pre-filled with the current value, a blank submit leaves it
-unchanged; clearing the username drops both fields together, since a password
+and key fields are never pre-filled with the current value, and a blank submit
+leaves them unchanged. The page can replace the key but not remove it. Clearing
+the MQTT username drops the username and the password together, since a password
 with no username is meaningless.
 
 ## Operational notes

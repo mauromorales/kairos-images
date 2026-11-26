@@ -6,9 +6,9 @@ name: 'Build Kairos riscv64 VisionFive 2 image'
 #
 # A release is a manual workflow_dispatch with release_version set (for
 # example 0.1.0). It builds and pushes the image, makes a live ISO from it
-# with AuroraBoot, and creates a DRAFT GitHub Release named
-# kairos-riscv64-vf2-v<version>. Nothing is public until the draft is
-# published by hand.
+# with AuroraBoot, and creates one DRAFT GitHub Release per image, named
+# kairos-riscv64-vf2-k3s-v<version> and kairos-riscv64-vf2-k0s-v<version>.
+# Nothing is public until a draft is published by hand.
 on:
   push:
     branches:

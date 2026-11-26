@@ -1,9 +1,11 @@
 # Kairos v4.4.0 for the StarFive VisionFive 2 (JH7110), riscv64, with the HDMI kernel.
-# Build: docker buildx build --platform linux/riscv64 -t kairos-vf2 .
+# Build: docker buildx build --platform linux/riscv64 --target k0s -t kairos-vf2-k0s .
+# (or --target k3s). Two images: the k3s one holds the CARV-ICS-FORTH k3s fork, the k0s one
+# holds an unofficial riscv64 k0s build. Neither holds both.
 #
 # Stage 1 builds the kernel (mainline + the unmerged JH7110 display series). It
 # runs on the build machine's own architecture and cross-compiles, so it does not
-# go through QEMU. Stage 2 is the Kairos image, built for riscv64.
+# go through QEMU. Stage 2 (`base`) is Kairos for riscv64 with no Kubernetes; the `k3s` and `k0s` stages add the distribution.
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS kernel
 ARG KERNEL_TAG=v7.4-rc1
 # Commit of github.com/Opvolger/linux-drm-jh7110. Patches 0001-0024 are the

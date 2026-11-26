@@ -25,13 +25,13 @@ Not tested: TPM, the k0s image on the board, NVMe on the final build, boot time.
 
 ## Image
 
-[`Dockerfile`](./Dockerfile) builds one image: Kairos v4.4.0 with a patched
+[`Dockerfile`](./Dockerfile) builds two images (a `k3s` and a `k0s` target, see below). Each is Kairos v4.4.0 with a patched
 7.4-rc1 kernel that has the HDMI driver. The kernel is built inside the Docker
 build (cross-compiled, not under QEMU). Published to
 `quay.io/mauromorales/kairos-riscv64`, tagged `ubuntu-24.04-standard-riscv64-visionfive2-<version>-<k3s|k0s>v<version>`, by
 [`build-kairos-riscv64-vf2.yaml`](../../.github/workflows/build-kairos-riscv64-vf2.yaml).
 A manual run of that workflow with `release_version` set also builds a live ISO
-and creates a draft GitHub Release, `kairos-riscv64-vf2-v<version>`.
+and creates one draft GitHub Release per image, `kairos-riscv64-vf2-<k3s|k0s>-v<version>`.
 For the stock Ubuntu kernel without HDMI, use the generic image in
 [`../kairos-riscv64`](../kairos-riscv64), or build your own with `kairos-init`.
 
@@ -98,5 +98,5 @@ riscv64 images, so the node joins through this script, not through an artifact.
 
 1. Update U-Boot (limitation 1).
 2. Download the ISO of the image you want from the [releases](../../releases) (`kairos-riscv64-vf2-k3s-v*` or `kairos-riscv64-vf2-k0s-v*`), write it to a USB stick and boot the board from it. The live ISO has no display output: use serial or SSH.
-3. Run `kairos-agent manual-install --device /dev/sdX cloud-config.yaml`.
+3. Run `kairos-agent manual-install --device /dev/sdX <config>`, where `<config>` is your copy of `cloud-config-k3s.yaml` (k3s image) or `cloud-config.yaml` (k0s image).
 4. Wait for it to finish (limitation 3), then remove the ISO stick and reboot. At the GRUB prompt, type the entry from `kernel/grubmenu` to get HDMI (limitation 2).

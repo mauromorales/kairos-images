@@ -42,6 +42,11 @@ FROM ubuntu:24.04
 ARG KAIROS_VERSION=v4.4.0
 ARG VERSION=0.0.0
 ARG K3S_RISCV64_RELEASE=20260817
+# k0s publishes no riscv64 release. This is an unofficial build of the upstream tag,
+# released in this repository. The checksum is checked below.
+ARG K0S_RISCV64_RELEASE=k0s-riscv64-v1.36.4-k0s.0
+ARG K0S_RISCV64_FILE=k0s-v1.36.4%2Bk0s.0-linux-riscv64
+ARG K0S_RISCV64_SHA256=d6aeb07b7a1cf0185ac9bfdbaeedea8bac7d74f8ca7abfd125d711deb02eb953
 
 # kairos-init, provider-kairos and the Kairos tools come from the Kairos release:
 # the quay.io/kairos/kairos-init image has no riscv64 build.
@@ -66,6 +71,11 @@ RUN curl -fL -o /usr/bin/k3s "https://github.com/CARV-ICS-FORTH/k3s/releases/dow
     curl -sfL https://get.k3s.io -o /tmp/k3s-install.sh && chmod +x /tmp/k3s-install.sh && \
     INSTALL_K3S_BIN_DIR=/usr/bin INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_ENABLE=true \
     INSTALL_K3S_SKIP_SELINUX_RPM=true /tmp/k3s-install.sh && rm -f /tmp/k3s-install.sh
+# k0s, from our own riscv64 build. provider-kairos finds it in /usr/bin and reads the
+# `k0s:` and `k0s-worker:` stanzas of the cloud-config. Both k3s and k0s are in the image.
+RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}"
+RUN echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c -
+RUN chmod +x /usr/bin/k0s
 # The cloud-config `k3s:` stanza is read by provider-kairos at boot.
 RUN mkdir -p /system/providers && \
     curl -fL "https://github.com/kairos-io/kairos/releases/download/${KAIROS_VERSION}/provider-kairos-${KAIROS_VERSION}-linux-riscv64.tar.gz" \

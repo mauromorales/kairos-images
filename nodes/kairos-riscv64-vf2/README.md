@@ -41,6 +41,16 @@ riscv64 release ([k3s-io/k3s#7151](https://github.com/k3s-io/k3s/issues/7151)).
 Put your own SSH key into [`cloud-config.yaml`](./cloud-config.yaml); there is no
 default password.
 
+## k0s
+
+The image also holds `k0s`, so a node can run `k0s-worker:` (or `k0s:`) in its cloud-config
+instead of `k3s:`. k0s publishes no riscv64 release, so the binary is an unofficial build of
+the upstream tag `v1.36.4+k0s.0`, made under QEMU and published as
+[k0s-riscv64-v1.36.4-k0s.0](https://github.com/mauromorales/kairos-images/releases/tag/k0s-riscv64-v1.36.4-k0s.0).
+The Dockerfile checks its sha256. It ran under `qemu-riscv64` and printed its version. It has
+not run on the board yet. A node uses one distribution, so leave the other stanza out of its
+cloud-config.
+
 ## Limitations
 
 1. **U-Boot.** The factory U-Boot (2021.10) cannot read USB. Update the SPI flash

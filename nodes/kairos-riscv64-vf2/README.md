@@ -13,7 +13,7 @@ Tested on 2026-11-19, on a board with no fan or heatsink (55-70 C).
 | Test | Result |
 |---|---|
 | Live ISO boot, auto-install to a USB stick | pass |
-| k3s node `Ready` after install | pass |
+| k3s node `Ready` after install (v0.1.0 image, before k3s was dropped) | pass |
 | A/B upgrade v0.1.3 to v4.4.0 | pass |
 | Rollback through the "Kairos (fallback)" GRUB entry | pass |
 | Recovery upgrade (`kairos-agent upgrade --recovery`) | pass |
@@ -21,35 +21,29 @@ Tested on 2026-11-19, on a board with no fan or heatsink (55-70 C).
 | Live ISO plus `kairos-agent manual-install` | pass |
 | HDMI console (patched kernel, see below) | pass |
 
-Not tested: TPM, k0s, NVMe on the final build, boot time.
+Not tested: TPM, k0s on the board, NVMe on the final build, boot time.
 
 ## Image
 
 [`Dockerfile`](./Dockerfile) builds one image: Kairos v4.4.0 with a patched
 7.4-rc1 kernel that has the HDMI driver. The kernel is built inside the Docker
 build (cross-compiled, not under QEMU). Published to
-`quay.io/mauromorales/kairos-riscv64`, tagged `ubuntu-24.04-standard-riscv64-visionfive2-<version>-k3sv<k3s>`, by
+`quay.io/mauromorales/kairos-riscv64`, tagged `ubuntu-24.04-standard-riscv64-visionfive2-<version>-k0sv<k0s>`, by
 [`build-kairos-riscv64-vf2.yaml`](../../.github/workflows/build-kairos-riscv64-vf2.yaml).
 A manual run of that workflow with `release_version` set also builds a live ISO
 and creates a draft GitHub Release, `kairos-riscv64-vf2-v<version>`.
 For the stock Ubuntu kernel without HDMI, use the generic image in
 [`../kairos-riscv64`](../kairos-riscv64), or build your own with `kairos-init`.
 
-It uses the riscv64 tools from the Kairos v4.4.0 release, and the k3s fork from
-[CARV-ICS-FORTH](https://github.com/CARV-ICS-FORTH/k3s), because k3s has no official
-riscv64 release ([k3s-io/k3s#7151](https://github.com/k3s-io/k3s/issues/7151)).
-Put your own SSH key into [`cloud-config.yaml`](./cloud-config.yaml); there is no
-default password.
-
-## k0s
-
-The image also holds `k0s`, so a node can run `k0s-worker:` (or `k0s:`) in its cloud-config
-instead of `k3s:`. k0s publishes no riscv64 release, so the binary is an unofficial build of
-the upstream tag `v1.36.4+k0s.0`, made under QEMU and published as
+It uses the riscv64 tools from the Kairos v4.4.0 release, and k0s. k0s publishes no
+riscv64 release, so the binary is an unofficial build of the upstream tag `v1.36.4+k0s.0`,
+made under QEMU and published as
 [k0s-riscv64-v1.36.4-k0s.0](https://github.com/mauromorales/kairos-images/releases/tag/k0s-riscv64-v1.36.4-k0s.0).
-The Dockerfile checks its sha256. It ran under `qemu-riscv64` and printed its version. It has
-not run on the board yet. A node uses one distribution, so leave the other stanza out of its
-cloud-config.
+The Dockerfile checks its sha256. It ran under `qemu-riscv64` and printed its version. It
+has not run on the board yet. Earlier releases (v0.1.0 and v0.2.0 drafts) held a k3s fork
+instead; k3s is no longer in the image.
+Put your own SSH key into [`cloud-config.yaml`](./cloud-config.yaml); there is no
+default password. The cloud-config starts a single k0s node. A worker uses `k0s-worker:`.
 
 ## Limitations
 

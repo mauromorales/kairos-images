@@ -41,7 +41,6 @@ FROM ubuntu:24.04
 # the image's os-release, as with ../kairos-riscv64.
 ARG KAIROS_VERSION=v4.4.0
 ARG VERSION=0.0.0
-ARG K3S_RISCV64_RELEASE=20260817
 # k0s publishes no riscv64 release. This is an unofficial build of the upstream tag,
 # released in this repository. The checksum is checked below.
 ARG K0S_RISCV64_RELEASE=k0s-riscv64-v1.36.4-k0s.0
@@ -64,19 +63,12 @@ RUN REL=$(cat /tmp/kernelrelease) && mv /tmp/vmlinuz /boot/vmlinuz-$REL && depmo
 # The init step picks the newest /lib/modules/<rel>, links /boot/vmlinuz and builds the initrd.
 RUN kairos-init -l debug -s init --version "${VERSION}"
 
-# k3s has no official riscv64 release; use the CARV-ICS-FORTH fork. Same approach
-# and reasons as ../kairos-riscv64/kairos.Dockerfile.
-RUN curl -fL -o /usr/bin/k3s "https://github.com/CARV-ICS-FORTH/k3s/releases/download/${K3S_RISCV64_RELEASE}/k3s-riscv64" && \
-    chmod +x /usr/bin/k3s && \
-    curl -sfL https://get.k3s.io -o /tmp/k3s-install.sh && chmod +x /tmp/k3s-install.sh && \
-    INSTALL_K3S_BIN_DIR=/usr/bin INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_ENABLE=true \
-    INSTALL_K3S_SKIP_SELINUX_RPM=true /tmp/k3s-install.sh && rm -f /tmp/k3s-install.sh
 # k0s, from our own riscv64 build. provider-kairos finds it in /usr/bin and reads the
-# `k0s:` and `k0s-worker:` stanzas of the cloud-config. Both k3s and k0s are in the image.
-RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}"
-RUN echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c -
-RUN chmod +x /usr/bin/k0s
-# The cloud-config `k3s:` stanza is read by provider-kairos at boot.
+# `k0s:` and `k0s-worker:` stanzas of the cloud-config.
+RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}" && \
+    echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c - && \
+    chmod +x /usr/bin/k0s
+# The cloud-config `k0s:` or `k0s-worker:` stanza is read by provider-kairos at boot.
 RUN mkdir -p /system/providers && \
     curl -fL "https://github.com/kairos-io/kairos/releases/download/${KAIROS_VERSION}/provider-kairos-${KAIROS_VERSION}-linux-riscv64.tar.gz" \
       | tar -xz -O provider-kairos > /system/providers/agent-provider-kairos && \

@@ -9,20 +9,31 @@ users:
     ssh_authorized_keys:
       - "ssh-ed25519 AAAA... you@example"
 
-k3s:
+# One node that is its own controller and worker. For a worker that joins another
+# cluster, use `k0s-worker:` with `--token-file /etc/k0s/token` instead.
+k0s:
   enabled: true
   args:
-    - --write-kubeconfig-mode=644
-    - --disable=traefik
-    # The root filesystem is an overlay; containerd's overlayfs snapshotter
-    # cannot stack on it. See ../kairos-riscv64/README.md.
-    - --snapshotter=native
+    - --single
 
 # Trust the fleet console, same as the other nodes. Without it the
 # phone-home registration fails TLS verification. Public certificates only.
 # The registration token is NOT here: it is a secret, see README.md (Fleet).
 stages:
   initramfs:
+    - name: "containerd uses the native snapshotter"
+      files:
+        # The root filesystem is an overlay and containerd's overlayfs snapshotter did not work
+        # on this board with k3s. UNCHECKED with k0s: the plugin name must match the containerd
+        # that this k0s version ships. Drop this file if overlayfs works on the board.
+        - path: /etc/k0s/containerd.d/native-snapshotter.toml
+          permissions: 0644
+          owner: 0
+          group: 0
+          content: |
+            version = 3
+            [plugins.'io.containerd.cri.v1.images']
+              snapshotter = 'native'
     - name: "Trust the fleet console's certificate"
       files:
         # Public cert only: the fleet console's own certificate. It also needs a

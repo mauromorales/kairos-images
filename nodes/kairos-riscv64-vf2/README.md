@@ -13,7 +13,7 @@ Tested on 2026-11-19, on a board with no fan or heatsink (55-70 C).
 | Test | Result |
 |---|---|
 | Live ISO boot, auto-install to a USB stick | pass |
-| k3s node `Ready` after install (v0.1.0 image, before k3s was dropped) | pass |
+| k3s node `Ready` after install (an earlier build that held a k3s fork) | pass |
 | A/B upgrade v0.1.3 to v4.4.0 | pass |
 | Rollback through the "Kairos (fallback)" GRUB entry | pass |
 | Recovery upgrade (`kairos-agent upgrade --recovery`) | pass |
@@ -40,8 +40,8 @@ riscv64 release, so the binary is an unofficial build of the upstream tag `v1.36
 made under QEMU and published as
 [k0s-riscv64-v1.36.4-k0s.0](https://github.com/mauromorales/kairos-images/releases/tag/k0s-riscv64-v1.36.4-k0s.0).
 The Dockerfile checks its sha256. It ran under `qemu-riscv64` and printed its version. It
-has not run on the board yet. Earlier releases (v0.1.0 and v0.2.0 drafts) held a k3s fork
-instead; k3s is no longer in the image.
+has not run on the board yet. The release v0.1.0 holds a k3s fork
+instead of k0s. Use v0.3.0 or newer for k0s.
 Put your own SSH key into [`cloud-config.yaml`](./cloud-config.yaml); there is no
 default password. The cloud-config starts a single k0s node. A worker uses `k0s-worker:`.
 
@@ -90,6 +90,6 @@ riscv64 images, so the node joins through this script, not through an artifact.
 ## Install
 
 1. Update U-Boot (limitation 1).
-2. Download the ISO from the [release](../../releases/tag/kairos-riscv64-vf2-v0.1.0), write it to a USB stick and boot the board from it. The live ISO has no display output: use serial or SSH.
+2. Download the ISO from the newest `kairos-riscv64-vf2-v*` [release](../../releases) (v0.3.0 or newer; v0.1.0 holds k3s, not k0s), write it to a USB stick and boot the board from it. The live ISO has no display output: use serial or SSH.
 3. Run `kairos-agent manual-install --device /dev/sdX cloud-config.yaml`.
 4. Wait for it to finish (limitation 3), then remove the ISO stick and reboot. At the GRUB prompt, type the entry from `kernel/grubmenu` to get HDMI (limitation 2).

@@ -1,9 +1,11 @@
 # Kairos v4.4.0 for the StarFive VisionFive 2 (JH7110), riscv64, with the HDMI kernel.
-# Build: docker buildx build --platform linux/riscv64 -t kairos-vf2 .
+# Build: docker buildx build --platform linux/riscv64 --target k0s -t kairos-vf2-k0s .
+# (or --target k3s). Two images: the k3s one holds the CARV-ICS-FORTH k3s fork, the k0s one
+# holds an unofficial riscv64 k0s build. Neither holds both.
 #
 # Stage 1 builds the kernel (mainline + the unmerged JH7110 display series). It
 # runs on the build machine's own architecture and cross-compiles, so it does not
-# go through QEMU. Stage 2 is the Kairos image, built for riscv64.
+# go through QEMU. Stage 2 (`base`) is Kairos for riscv64 with no Kubernetes; the `k3s` and `k0s` stages add the distribution.
 FROM --platform=$BUILDPLATFORM ubuntu:24.04 AS kernel
 ARG KERNEL_TAG=v7.4-rc1
 # Commit of github.com/Opvolger/linux-drm-jh7110. Patches 0001-0024 are the
@@ -35,19 +37,12 @@ RUN export ARCH=riscv CROSS_COMPILE=riscv64-linux-gnu- && \
     cp /linux/arch/riscv/boot/Image /out/vmlinuz && \
     mkdir -p /out/dtb && cp /linux/arch/riscv/boot/dts/starfive/jh7110-*.dtb /out/dtb/
 
-FROM ubuntu:24.04
+FROM ubuntu:24.04 AS base
 # KAIROS_VERSION is the upstream Kairos release the tools come from. VERSION is
 # the version of this image (our own, passed in by the workflow); it ends up in
 # the image's os-release, as with ../kairos-riscv64.
 ARG KAIROS_VERSION=v4.4.0
 ARG VERSION=0.0.0
-ARG K3S_RISCV64_RELEASE=20260817
-# k0s publishes no riscv64 release. This is an unofficial build of the upstream tag,
-# released in this repository. The checksum is checked below.
-ARG K0S_RISCV64_RELEASE=k0s-riscv64-v1.36.4-k0s.0
-ARG K0S_RISCV64_FILE=k0s-v1.36.4%2Bk0s.0-linux-riscv64
-ARG K0S_RISCV64_SHA256=d6aeb07b7a1cf0185ac9bfdbaeedea8bac7d74f8ca7abfd125d711deb02eb953
-
 # kairos-init, provider-kairos and the Kairos tools come from the Kairos release:
 # the quay.io/kairos/kairos-init image has no riscv64 build.
 RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certificates && rm -rf /var/lib/apt/lists/*
@@ -64,6 +59,17 @@ RUN REL=$(cat /tmp/kernelrelease) && mv /tmp/vmlinuz /boot/vmlinuz-$REL && depmo
 # The init step picks the newest /lib/modules/<rel>, links /boot/vmlinuz and builds the initrd.
 RUN kairos-init -l debug -s init --version "${VERSION}"
 
+# The cloud-config `k3s:`, `k3s-agent:`, `k0s:` or `k0s-worker:` stanza is read by provider-kairos at boot.
+RUN mkdir -p /system/providers && \
+    curl -fL "https://github.com/kairos-io/kairos/releases/download/${KAIROS_VERSION}/provider-kairos-${KAIROS_VERSION}-linux-riscv64.tar.gz" \
+      | tar -xz -O provider-kairos > /system/providers/agent-provider-kairos && \
+    chmod +x /system/providers/agent-provider-kairos && \
+    ln -sf /system/providers/agent-provider-kairos /usr/bin/kairos
+
+# Two images from one Dockerfile: build with --target k3s or --target k0s. The last stage
+# (k0s) is the default.
+FROM base AS k3s
+ARG K3S_RISCV64_RELEASE=20260817
 # k3s has no official riscv64 release; use the CARV-ICS-FORTH fork. Same approach
 # and reasons as ../kairos-riscv64/kairos.Dockerfile.
 RUN curl -fL -o /usr/bin/k3s "https://github.com/CARV-ICS-FORTH/k3s/releases/download/${K3S_RISCV64_RELEASE}/k3s-riscv64" && \
@@ -71,14 +77,16 @@ RUN curl -fL -o /usr/bin/k3s "https://github.com/CARV-ICS-FORTH/k3s/releases/dow
     curl -sfL https://get.k3s.io -o /tmp/k3s-install.sh && chmod +x /tmp/k3s-install.sh && \
     INSTALL_K3S_BIN_DIR=/usr/bin INSTALL_K3S_SKIP_DOWNLOAD=true INSTALL_K3S_SKIP_ENABLE=true \
     INSTALL_K3S_SKIP_SELINUX_RPM=true /tmp/k3s-install.sh && rm -f /tmp/k3s-install.sh
+
+FROM base AS k0s
+# k0s publishes no riscv64 release. This is an unofficial build of the upstream tag,
+# released in this repository. The checksum is checked below.
+ARG K0S_RISCV64_RELEASE=k0s-riscv64-v1.36.4-k0s.0
+ARG K0S_RISCV64_FILE=k0s-v1.36.4%2Bk0s.0-linux-riscv64
+ARG K0S_RISCV64_SHA256=d6aeb07b7a1cf0185ac9bfdbaeedea8bac7d74f8ca7abfd125d711deb02eb953
+
 # k0s, from our own riscv64 build. provider-kairos finds it in /usr/bin and reads the
-# `k0s:` and `k0s-worker:` stanzas of the cloud-config. Both k3s and k0s are in the image.
-RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}"
-RUN echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c -
-RUN chmod +x /usr/bin/k0s
-# The cloud-config `k3s:` stanza is read by provider-kairos at boot.
-RUN mkdir -p /system/providers && \
-    curl -fL "https://github.com/kairos-io/kairos/releases/download/${KAIROS_VERSION}/provider-kairos-${KAIROS_VERSION}-linux-riscv64.tar.gz" \
-      | tar -xz -O provider-kairos > /system/providers/agent-provider-kairos && \
-    chmod +x /system/providers/agent-provider-kairos && \
-    ln -sf /system/providers/agent-provider-kairos /usr/bin/kairos
+# `k0s:` and `k0s-worker:` stanzas of the cloud-config.
+RUN curl -fL -o /usr/bin/k0s "https://github.com/mauromorales/kairos-images/releases/download/${K0S_RISCV64_RELEASE}/${K0S_RISCV64_FILE}" && \
+    echo "${K0S_RISCV64_SHA256}  /usr/bin/k0s" | sha256sum -c - && \
+    chmod +x /usr/bin/k0s

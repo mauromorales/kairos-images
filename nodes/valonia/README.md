@@ -9,7 +9,7 @@ Upstream publishes Hadron for the Pi 4 only with k3s or with no Kubernetes at al
 node builds its own with k0s.
 
 Output: a raw disk image (`-img` tag on `quay.io/mauromorales/valonia`). Write it to the SD card
-or disk. The node config goes on the `COS_OEM` partition as `90_custom.yaml`. See
-`nodes/belgica/README.md` in `mauromorales/homelab`.
+or disk. The node config goes on the `COS_OEM` partition as `90_custom.yaml`. The install steps are
+in `nodes/belgica/README.md` in the Forgejo repository `mrls/homelab`.
 
 Not checked yet: that Hadron boots on a real Pi 4 with this image.

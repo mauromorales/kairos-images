@@ -2,14 +2,18 @@ name: 'Build valonia image (Hadron, Raspberry Pi 4, k0s)'
 
 # valonia is the ARM64 worker of the belgica cluster. This builds a Kairos Hadron raw
 # disk image for the Raspberry Pi 4 with k0s, with the Kairos factory action. There is no
-# custom base image: it starts from the Hadron base that Kairos publishes. A push or pull
-# request builds with an expiring tag. A release is a manual run with a tag.
+# custom base image: it starts from the Hadron base that Kairos publishes.
+#
+# A push or pull request builds a test image tagged test-<commit>. Quay does not expire
+# these tags (the factory pushes a manifest list, and Quay ignores the expiry label on
+# one), so delete old test tags by hand. A release is a manual run from main with a tag.
+# The tag must be new: the run stops if it exists.
 
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Durable image tag, e.g. v0.6.3-rpi4-k0s-v1.36.4-r1. Leave empty for an expiring test tag.'
+        description: 'Durable image tag, e.g. v0.6.3-rpi4-k0s-v1.36.4-r1. Leave empty for a test tag.'
         required: false
         type: string
   push:
@@ -30,9 +34,47 @@ permissions:
   actions: read
   packages: write
 
+concurrency:
+  group: valonia-${{ github.event_name }}-${{ inputs.tag || github.ref }}
+
+env:
+  IMAGE: quay.io/mauromorales/valonia
+
 jobs:
+  tag:
+    runs-on: ubuntu-24.04
+    outputs:
+      value: ${{ steps.tag.outputs.value }}
+    steps:
+      - name: Choose the tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          if [ -n "$INPUT_TAG" ]; then
+            if [ "$GITHUB_REF" != "refs/heads/main" ]; then
+              echo "A durable tag can only be pushed from main." >&2; exit 1
+            fi
+            if [[ ! "$INPUT_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+              echo "Bad tag." >&2; exit 1
+            fi
+            # Only a clear "not found" answer lets the push go on. Any other failure stops the run.
+            for t in "${INPUT_TAG}" "${INPUT_TAG}-img"; do
+              if out="$(docker manifest inspect "${IMAGE}:${t}" 2>&1)"; then
+                echo "Tag ${t} already exists. Pick a new one." >&2; exit 1
+              elif ! printf '%s' "$out" | grep -qi -E 'manifest unknown|no such manifest'; then
+                echo "Cannot tell if the tag ${t} exists: $out" >&2; exit 1
+              fi
+            done
+            echo "value=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=test-${HEAD_SHA::12}" >> "$GITHUB_OUTPUT"
+          fi
+
   valonia:
     name: Kairos Factory
+    needs: tag
     uses: kairos-io/kairos-factory-action/.github/workflows/reusable-factory.yaml@e2108928941a741b690e3f879f46e5f0706ae565 # v1.4.5
     secrets:
       registry_username: ${{ secrets.REGISTRY_USERNAME }}
@@ -42,9 +84,8 @@ jobs:
       model: "rpi4"
       arch: "arm64"
       kubernetes_distro: "k0s"
-      # The version that hegemonikon runs. Check that it is a k0s release the factory can fetch.
       kubernetes_version: "v1.36.4+k0s.0"
-      version: ${{ inputs.tag != '' && inputs.tag || 'v0.0.0-test' }}
+      version: ${{ needs.tag.outputs.value }}
       raw: true
       sbom: false
       security_scan_mode: "report-only"
@@ -55,4 +96,3 @@ jobs:
       custom_tag_format: "$VERSION"
       custom_artifact_format: "valonia-$VERSION-$ARCH-$COMMIT_SHA"
       custom_job_name_format: "valonia"
-      image_labels: ${{ inputs.tag == '' && 'quay.expires-after=2d' || '' }}

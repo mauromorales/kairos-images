@@ -81,7 +81,7 @@ node. A worker uses `k0s-worker:`.
 
 ## Fleet
 
-[`cloud-config.yaml`](./cloud-config.yaml) trusts the fleet console's certificate and
+[`cloud-config.yaml`](./cloud-config.yaml) and [`cloud-config-k3s.yaml`](./cloud-config-k3s.yaml) trust the fleet console's certificate and
 the internal CA-2, the same way `thuroros` does, so the node can register with the
 AuroraBoot fleet server. The registration token is a secret and is not in this repo.
 After the install, run the fleet server's command on the node as root:

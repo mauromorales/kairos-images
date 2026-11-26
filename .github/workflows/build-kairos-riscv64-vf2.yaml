@@ -1,11 +1,11 @@
-name: 'Build Kairos riscv64 VisionFive 2 image'
+name: 'Build Kairos riscv64 VisionFive 2 images'
 
 # Builds nodes/kairos-riscv64-vf2/Dockerfile for riscv64. The kernel stage
 # cross-compiles on the runner; the image stage runs under QEMU. Pushes to
 # quay.io only from main; pull requests just validate the build.
 #
 # A release is a manual workflow_dispatch with release_version set (for
-# example 0.1.0). It builds and pushes the image, makes a live ISO from it
+# example 0.1.0). It builds and pushes both images, makes a live ISO from each
 # with AuroraBoot, and creates one DRAFT GitHub Release per image, named
 # kairos-riscv64-vf2-k3s-v<version> and kairos-riscv64-vf2-k0s-v<version>.
 # Nothing is public until a draft is published by hand.
@@ -178,6 +178,7 @@ jobs:
           else
             distro_row="| k3s | v${DISTRO_VERSION}, CARV-ICS-FORTH fork release $(grep -oP '^ARG K3S_RISCV64_RELEASE=\K.*' $df) (not an official k3s release) |"
           fi
+          if [ "$DISTRO" = k0s ]; then cfg=cloud-config.yaml; else cfg=cloud-config-k3s.yaml; fi
           kernel="$(grep -oP '^ARG KERNEL_TAG=\K.*' $df)"
           sha256="$(cut -d' ' -f1 "output/$ISO_NAME.iso.sha256")"
           cat > notes.md <<NOTES
@@ -198,7 +199,7 @@ jobs:
 
           1. Update U-Boot and OpenSBI in the board's SPI flash to 2025.10 (the factory 2021.10 cannot read USB).
           2. Write the ISO to a USB stick and boot the board from it.
-          3. Over SSH or the serial console run \`kairos-agent manual-install --device /dev/sdX cloud-config.yaml\` with your own SSH key in the file (\`cloud-config.yaml\` for k0s, \`cloud-config-k3s.yaml\` for k3s).
+          3. Over SSH or the serial console run \`kairos-agent manual-install --device /dev/sdX ${cfg}\` with your own SSH key in the file (the example is \`nodes/kairos-riscv64-vf2/${cfg}\`).
           4. Wait for it to finish, remove the stick and reboot. At the GRUB prompt type the HDMI entry from \`kernel/grubmenu\` to get the display.
 
           The live ISO has no display output. Use serial or SSH until the installed system boots with the HDMI entry. Full steps and limitations: nodes/kairos-riscv64-vf2/README.md.

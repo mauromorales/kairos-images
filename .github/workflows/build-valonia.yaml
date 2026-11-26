@@ -4,7 +4,8 @@ name: 'Build valonia image (Hadron, Raspberry Pi 4, k0s)'
 # disk image for the Raspberry Pi 4 with k0s, with the Kairos factory action. There is no
 # custom base image: it starts from the Hadron base that Kairos publishes.
 #
-# A push or pull request builds a test image tagged test-<commit>. Quay does not expire
+# A push or pull request builds a test image tagged v0.0.0-test-<commit>. The tag has to be
+# a valid version, because kairos-init parses it. Quay does not expire
 # these tags (the factory pushes a manifest list, and Quay ignores the expiry label on
 # one), so delete old test tags by hand. A release is a manual run from main with a tag.
 # The tag must be new: the run stops if it exists.
@@ -13,7 +14,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: 'Durable image tag, e.g. v0.6.3-rpi4-k0s-v1.36.4-r1. Leave empty for a test tag.'
+        description: 'Durable image tag, e.g. v0.6.3-rpi4-k0s-v1.36.4-r1 (must start with v and a digit). Leave empty for a test tag.'
         required: false
         type: string
   push:
@@ -56,7 +57,7 @@ jobs:
             if [ "$GITHUB_REF" != "refs/heads/main" ]; then
               echo "A durable tag can only be pushed from main." >&2; exit 1
             fi
-            if [[ ! "$INPUT_TAG" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]{0,127}$ ]]; then
+            if [[ ! "$INPUT_TAG" =~ ^v?[0-9][A-Za-z0-9._-]{0,126}$ ]]; then
               echo "Bad tag." >&2; exit 1
             fi
             # Only a clear "not found" answer lets the push go on. Any other failure stops the run.
@@ -69,7 +70,7 @@ jobs:
             done
             echo "value=$INPUT_TAG" >> "$GITHUB_OUTPUT"
           else
-            echo "value=test-${HEAD_SHA::12}" >> "$GITHUB_OUTPUT"
+            echo "value=v0.0.0-test-${HEAD_SHA::12}" >> "$GITHUB_OUTPUT"
           fi
 
   valonia:

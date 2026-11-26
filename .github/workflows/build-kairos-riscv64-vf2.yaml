@@ -27,10 +27,9 @@ on:
         required: false
         type: string
 
-# The k0s version (without the +k0s.0 build suffix) that the image holds. Bump with
-# K0S_RISCV64_RELEASE, K0S_RISCV64_FILE and K0S_RISCV64_SHA256 in the Dockerfile.
-env:
-  K0S_VERSION: '1.36.4'
+# Two images, one per Kubernetes distribution, built from the k3s and k0s targets of the
+# Dockerfile. `version` is the Kubernetes version that the image reports. Bump it together
+# with K3S_RISCV64_RELEASE (k3s) or the K0S_RISCV64_* arguments (k0s) in the Dockerfile.
 
 permissions:
   contents: write # only used to create the draft release
@@ -38,6 +37,14 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: k3s
+            version: '1.36.3'
+          - distro: k0s
+            version: '1.36.4'
     steps:
       - name: Checkout
         uses: actions/checkout@v6
@@ -66,30 +73,41 @@ jobs:
           # One Quay repo for every riscv64 image; the tag says what it is,
           # in the same order as the ISO name.
           version="$(grep '^value=' "$GITHUB_OUTPUT" | cut -d= -f2)"
-          echo "oci_tag=ubuntu-24.04-standard-riscv64-visionfive2-${version}-k0sv${K0S_VERSION}" >> "$GITHUB_OUTPUT"
+          echo "oci_tag=ubuntu-24.04-standard-riscv64-visionfive2-${version}-${{ matrix.distro }}v${{ matrix.version }}" >> "$GITHUB_OUTPUT"
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
           build-args: |
             VERSION=${{ steps.version.outputs.value }}
+          target: ${{ matrix.distro }}
           platforms: linux/riscv64
           file: nodes/kairos-riscv64-vf2/Dockerfile
           context: nodes/kairos-riscv64-vf2
           tags: |
             quay.io/mauromorales/kairos-riscv64:${{ steps.version.outputs.oci_tag }}
-          cache-from: type=gha,scope=kairos-riscv64-vf2
-          cache-to: type=gha,mode=max,scope=kairos-riscv64-vf2
+          cache-from: type=gha,scope=kairos-riscv64-vf2-${{ matrix.distro }}
+          cache-to: type=gha,mode=max,scope=kairos-riscv64-vf2-${{ matrix.distro }}
           push: ${{ github.event_name != 'pull_request' }}
 
   release:
     if: ${{ inputs.release_version != '' }}
     needs: build
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - distro: k3s
+            version: '1.36.3'
+          - distro: k0s
+            version: '1.36.4'
     env:
       VERSION: ${{ inputs.release_version }}
+      DISTRO: ${{ matrix.distro }}
+      DISTRO_VERSION: ${{ matrix.version }}
     steps:
       - name: Set the image name
-        run: echo "IMAGE=quay.io/mauromorales/kairos-riscv64:ubuntu-24.04-standard-riscv64-visionfive2-${VERSION}-k0sv${K0S_VERSION}" >> "$GITHUB_ENV"
+        run: echo "IMAGE=quay.io/mauromorales/kairos-riscv64:ubuntu-24.04-standard-riscv64-visionfive2-${VERSION}-${DISTRO}v${DISTRO_VERSION}" >> "$GITHUB_ENV"
 
       - name: Checkout
         uses: actions/checkout@v6
@@ -135,7 +153,7 @@ jobs:
       - name: Build ISO
         run: |
           mkdir -p output
-          name="kairos-ubuntu-24.04-standard-riscv64-visionfive2-${VERSION}-k0sv${K0S_VERSION}"
+          name="kairos-ubuntu-24.04-standard-riscv64-visionfive2-${VERSION}-${DISTRO}v${DISTRO_VERSION}"
           echo "ISO_NAME=$name" >> "$GITHUB_ENV"
           sudo ./auroraboot --debug build-iso --arch riscv64 --output ./output/ \
             --override-name "$name" "docker:$IMAGE"
@@ -152,10 +170,14 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="kairos-riscv64-vf2-v${VERSION}"
+          tag="kairos-riscv64-vf2-${DISTRO}-v${VERSION}"
           df=nodes/kairos-riscv64-vf2/Dockerfile
           kairos="$(grep -oP '^ARG KAIROS_VERSION=\K.*' $df)"
-          k0s_build="$(grep -oP '^ARG K0S_RISCV64_RELEASE=\K.*' $df)"
+          if [ "$DISTRO" = k0s ]; then
+            distro_row="| k0s | v${DISTRO_VERSION}+k0s.0, unofficial riscv64 build of the upstream tag, release \`$(grep -oP '^ARG K0S_RISCV64_RELEASE=\K.*' $df)\` of this repository (not an official k0s release; ran under QEMU only) |"
+          else
+            distro_row="| k3s | v${DISTRO_VERSION}, CARV-ICS-FORTH fork release $(grep -oP '^ARG K3S_RISCV64_RELEASE=\K.*' $df) (not an official k3s release) |"
+          fi
           kernel="$(grep -oP '^ARG KERNEL_TAG=\K.*' $df)"
           sha256="$(cut -d' ' -f1 "output/$ISO_NAME.iso.sha256")"
           cat > notes.md <<NOTES
@@ -165,7 +187,7 @@ jobs:
           |---|---|
           | Board | StarFive VisionFive 2 (v1.3B tested) |
           | Kairos | ${kairos} |
-          | k0s | v${K0S_VERSION}+k0s.0, unofficial riscv64 build of the upstream tag, release \`${k0s_build}\` of this repository (not an official k0s release; ran under QEMU only) |
+          ${distro_row}
           | Kernel | Linux ${kernel} plus the unmerged JH7110 display patches |
           | Base | Ubuntu 24.04 |
 
@@ -176,7 +198,7 @@ jobs:
 
           1. Update U-Boot and OpenSBI in the board's SPI flash to 2025.10 (the factory 2021.10 cannot read USB).
           2. Write the ISO to a USB stick and boot the board from it.
-          3. Over SSH or the serial console run \`kairos-agent manual-install --device /dev/sdX cloud-config.yaml\` with your own SSH key in the file.
+          3. Over SSH or the serial console run \`kairos-agent manual-install --device /dev/sdX cloud-config.yaml\` with your own SSH key in the file (\`cloud-config.yaml\` for k0s, \`cloud-config-k3s.yaml\` for k3s).
           4. Wait for it to finish, remove the stick and reboot. At the GRUB prompt type the HDMI entry from \`kernel/grubmenu\` to get the display.
 
           The live ISO has no display output. Use serial or SSH until the installed system boots with the HDMI entry. Full steps and limitations: nodes/kairos-riscv64-vf2/README.md.
@@ -184,5 +206,5 @@ jobs:
           gh release create "$tag" \
             "output/$ISO_NAME.iso" "output/$ISO_NAME.iso.sha256" \
             --draft --prerelease \
-            --title "Kairos riscv64 VisionFive 2 v${VERSION} (Ubuntu 24.04, Kairos ${kairos}, k0s v${K0S_VERSION})" \
+            --title "Kairos riscv64 VisionFive 2 v${VERSION} (Ubuntu 24.04, Kairos ${kairos}, ${DISTRO} v${DISTRO_VERSION})" \
             --notes-file notes.md

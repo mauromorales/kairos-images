@@ -13,7 +13,7 @@ Tested on 2026-11-19, on a board with no fan or heatsink (55-70 C).
 | Test | Result |
 |---|---|
 | Live ISO boot, auto-install to a USB stick | pass |
-| k3s node `Ready` after install (an earlier build that held a k3s fork) | pass |
+| k3s node `Ready` after install (the k3s image) | pass |
 | A/B upgrade v0.1.3 to v4.4.0 | pass |
 | Rollback through the "Kairos (fallback)" GRUB entry | pass |
 | Recovery upgrade (`kairos-agent upgrade --recovery`) | pass |
@@ -21,29 +21,36 @@ Tested on 2026-11-19, on a board with no fan or heatsink (55-70 C).
 | Live ISO plus `kairos-agent manual-install` | pass |
 | HDMI console (patched kernel, see below) | pass |
 
-Not tested: TPM, k0s on the board, NVMe on the final build, boot time.
+Not tested: TPM, the k0s image on the board, NVMe on the final build, boot time.
 
 ## Image
 
 [`Dockerfile`](./Dockerfile) builds one image: Kairos v4.4.0 with a patched
 7.4-rc1 kernel that has the HDMI driver. The kernel is built inside the Docker
 build (cross-compiled, not under QEMU). Published to
-`quay.io/mauromorales/kairos-riscv64`, tagged `ubuntu-24.04-standard-riscv64-visionfive2-<version>-k0sv<k0s>`, by
+`quay.io/mauromorales/kairos-riscv64`, tagged `ubuntu-24.04-standard-riscv64-visionfive2-<version>-<k3s|k0s>v<version>`, by
 [`build-kairos-riscv64-vf2.yaml`](../../.github/workflows/build-kairos-riscv64-vf2.yaml).
 A manual run of that workflow with `release_version` set also builds a live ISO
 and creates a draft GitHub Release, `kairos-riscv64-vf2-v<version>`.
 For the stock Ubuntu kernel without HDMI, use the generic image in
 [`../kairos-riscv64`](../kairos-riscv64), or build your own with `kairos-init`.
 
-It uses the riscv64 tools from the Kairos v4.4.0 release, and k0s. k0s publishes no
-riscv64 release, so the binary is an unofficial build of the upstream tag `v1.36.4+k0s.0`,
-made under QEMU and published as
-[k0s-riscv64-v1.36.4-k0s.0](https://github.com/mauromorales/kairos-images/releases/tag/k0s-riscv64-v1.36.4-k0s.0).
-The Dockerfile checks its sha256. It ran under `qemu-riscv64` and printed its version. It
-has not run on the board yet. The release v0.1.0 holds a k3s fork
-instead of k0s. Use v0.3.0 or newer for k0s.
-Put your own SSH key into [`cloud-config.yaml`](./cloud-config.yaml); there is no
-default password. The cloud-config starts a single k0s node. A worker uses `k0s-worker:`.
+## Two images: k3s and k0s
+
+[`Dockerfile`](./Dockerfile) has two targets, `k3s` and `k0s`. The workflow builds both, and a
+release has one draft per image (`kairos-riscv64-vf2-k3s-v<version>` and
+`kairos-riscv64-vf2-k0s-v<version>`). Each image holds one Kubernetes distribution, never both.
+Both use the riscv64 tools from the Kairos v4.4.0 release.
+
+| Image | Kubernetes | Where it comes from | Example config |
+|---|---|---|---|
+| k3s | v1.36.3 | [CARV-ICS-FORTH](https://github.com/CARV-ICS-FORTH/k3s) fork, because k3s has no official riscv64 release ([k3s-io/k3s#7151](https://github.com/k3s-io/k3s/issues/7151)) | [`cloud-config-k3s.yaml`](./cloud-config-k3s.yaml) |
+| k0s | v1.36.4+k0s.0 | an unofficial build of the upstream tag, made under QEMU, published as [k0s-riscv64-v1.36.4-k0s.0](https://github.com/mauromorales/kairos-images/releases/tag/k0s-riscv64-v1.36.4-k0s.0); the Dockerfile checks its sha256 | [`cloud-config.yaml`](./cloud-config.yaml) |
+
+The k0s binary ran under `qemu-riscv64` and printed its version. It has not run on the board
+yet. The release `kairos-riscv64-vf2-v0.1.0` is the older k3s-only image. Put your own SSH
+key into the cloud-config; there is no default password. The k0s example starts a single
+node. A worker uses `k0s-worker:`.
 
 ## Limitations
 
@@ -90,6 +97,6 @@ riscv64 images, so the node joins through this script, not through an artifact.
 ## Install
 
 1. Update U-Boot (limitation 1).
-2. Download the ISO from the newest `kairos-riscv64-vf2-v*` [release](../../releases) (v0.3.0 or newer; v0.1.0 holds k3s, not k0s), write it to a USB stick and boot the board from it. The live ISO has no display output: use serial or SSH.
+2. Download the ISO of the image you want from the [releases](../../releases) (`kairos-riscv64-vf2-k3s-v*` or `kairos-riscv64-vf2-k0s-v*`), write it to a USB stick and boot the board from it. The live ISO has no display output: use serial or SSH.
 3. Run `kairos-agent manual-install --device /dev/sdX cloud-config.yaml`.
 4. Wait for it to finish (limitation 3), then remove the ISO stick and reboot. At the GRUB prompt, type the entry from `kernel/grubmenu` to get HDMI (limitation 2).

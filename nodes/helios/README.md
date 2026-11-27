@@ -6,10 +6,10 @@ Hadron, so the node can join a k0s cluster as a worker.
 
 | | |
 |---|---|
-| Base | `quay.io/kairos/hadron:v0.5.1-standard-amd64-generic-v4.3.0-k0s-v1.36.4-k0s.0` |
+| Base | The newest followed tag of `quay.io/kairos/hadron` (see "Follow upstream"). A build by hand uses the default in the `Dockerfile`: `v0.5.1-standard-amd64-generic-v4.3.0-k0s-v1.36.4-k0s.0` |
 | Driver | NVIDIA 595.91.07, open kernel modules built against the Hadron kernel |
 | Image | `quay.io/mauromorales/helios` |
-| Tag | `v0.5.1-nvidia-595.91.07-k0s-v1.36.4-r<N>` |
+| Tag | `<upstream tag>-nvidia-595.91.07` from the daily run, `v0.5.1-nvidia-595.91.07-k0s-v1.36.4-r<N>` for the older images built by hand |
 
 **Live boot.** On a live boot (`/run/cos/live_mode` or `/run/cos/uki_install_mode` exists), `live-oem.yaml` locks the default
 `kairos` user, removes the root autologin on the local consoles, and enables a login prompt on the
@@ -43,7 +43,7 @@ The `Dockerfile` is adapted from the
 [`examples/add-packages/Dockerfile.nvidia`](https://github.com/kairos-io/hadron/blob/ce78a7c/examples/add-packages/Dockerfile.nvidia)
 example in kairos-io/hadron (commit `ce78a7c`). Changes from that example:
 
-- The base is the k0s image of Hadron v0.5.1.
+- The base is the k0s image of Hadron.
 - `NVIDIA_USERSPACE_VERSION` sets the userspace driver version. It equals `NVIDIA_VERSION`
   by default. A different value builds a deliberate mismatch, for testing a driver rollback.
 - NVIDIA's `LICENSE` file is in `/usr/share/licenses/nvidia-driver/`. The NVIDIA driver
@@ -72,6 +72,27 @@ a tag that expires after 2 days.
 
 For a durable tag, run the workflow `Build Kairos Hadron NVIDIA image` by hand and enter
 the tag. For a mismatch build, also enter `nvidia_userspace_version`.
+
+### Follow upstream
+
+The same workflow runs daily. `newest-upstream-tag.sh` picks the upstream tag: amd64 generic
+standard, k0s v1.36, Kairos 4.x from 4.5.0, no release candidate. The newest has the highest Kairos
+version, then the highest k0s version, then the highest Hadron version. The run builds the image from
+that tag with the Hadron toolchain of the same version, runs `test-image.sh`, and pushes
+`<upstream tag>-nvidia-<driver version>`. When that tag exists, the run logs `tag exists` and builds
+nothing.
+
+- A change in this directory does not rebuild an existing tag. It ships with the next upstream
+  release. A run by hand with a `tag` is not a way to ship it sooner: that build uses the
+  `Dockerfile` defaults, an older base than the followed tags.
+- A Hadron release without a newer Kairos or k0s version is picked only when it is a new tag for the
+  newest Kairos and k0s version.
+- A new k0s minor version or Kairos 5 needs a change to the pattern in `newest-upstream-tag.sh`.
+- To run it now, run the workflow by hand with `follow_upstream` checked. From a branch it pushes
+  only an expiring test tag.
+- GitHub stops scheduled workflows in a repository with no activity for 60 days.
+
+To test the tag selection: `nodes/helios/newest-upstream-tag.test.sh`.
 
 To build on your machine:
 

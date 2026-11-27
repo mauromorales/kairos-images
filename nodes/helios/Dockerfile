@@ -33,9 +33,15 @@ WORKDIR /build
 # Pull kernel sources so we can build the modules
 # cdn.kernel.org stores the tarballs under vMAJOR.x, so derive that from the version
 # instead of hardcoding it, and let curl fail on the download rather than on the untar
-RUN kver=$(cat /usr/share/kernel-misc/kernel-version) && curl -fL https://cdn.kernel.org/pub/linux/kernel/v${kver%%.*}.x/linux-${kver}.tar.xz -o linux-${kver}.tar.xz
-RUN kver=$(cat /usr/share/kernel-misc/kernel-version) && tar -xf linux-${kver}.tar.xz && mv linux-${kver} linux
+# kernel.org names the first release of a series without the patch number: version 7.3.0 is
+# linux-7.3.tar.xz. ${kver%.0} drops a ".0" at the end and leaves every other version as it is.
+RUN kver=$(cat /usr/share/kernel-misc/kernel-version) && src=${kver%.0} && curl -fL https://cdn.kernel.org/pub/linux/kernel/v${kver%%.*}.x/linux-${src}.tar.xz -o linux-${src}.tar.xz
+RUN kver=$(cat /usr/share/kernel-misc/kernel-version) && src=${kver%.0} && tar -xf linux-${src}.tar.xz && mv linux-${src} linux
 WORKDIR /build/linux
+# objtool, a build tool of the kernel, gives sigaltstack SIGSTKSZ bytes, which is 8192 here. Some
+# build machines need a larger signal stack for their CPU, and the build then stops with
+# "init_signal_handler: sigaltstack failed: Out of memory". 64 KiB is enough on each of them.
+RUN if [ -f tools/objtool/signal.c ]; then sed -i 's/\bSIGSTKSZ\b/65536/g' tools/objtool/signal.c; fi
 RUN cp /usr/share/kernel-misc/kernel-config .config
 # Disable module signing cleanly
 RUN ./scripts/config --disable MODULE_SIG

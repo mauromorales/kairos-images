@@ -3,7 +3,12 @@ name: 'Build Kairos Hadron NVIDIA image'
 # Builds the image, checks it with test-image.sh, and pushes it to quay.io.
 # On push and pull request the tag expires after 2 days. On workflow_dispatch
 # with a tag, the image is durable.
+# The daily run follows upstream: it builds the newest Hadron tag that
+# newest-upstream-tag.sh picks, and pushes it as <upstream tag>-nvidia-<driver>.
+# It builds nothing when that tag exists.
 on:
+  schedule:
+    - cron: '23 5 * * *'
   push:
     branches:
       - 'main'
@@ -24,12 +29,18 @@ on:
         description: 'Userspace driver version. Leave empty to match the kernel module. A different value builds a deliberate mismatch.'
         required: false
         type: string
+      follow_upstream:
+        description: 'Do what the daily run does. From main the tag is durable, from a branch it expires. Leave the two inputs above empty.'
+        required: false
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
-  group: helios-${{ github.event_name }}-${{ inputs.tag || github.ref }}
+  # All follow runs on one ref share a group, so two of them cannot push the same tag.
+  group: helios-${{ (github.event_name == 'schedule' || inputs.follow_upstream) && 'follow' || github.event_name }}-${{ inputs.tag || github.ref }}
 
 env:
   IMAGE: quay.io/mauromorales/helios
@@ -42,10 +53,42 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
 
+      - name: Test the tag selection
+        run: nodes/helios/newest-upstream-tag.test.sh
+
+      - name: Follow upstream
+        id: follow
+        if: ${{ github.event_name == 'schedule' || inputs.follow_upstream }}
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+          INPUT_USER: ${{ inputs.nvidia_userspace_version }}
+        run: |
+          if [ -n "$INPUT_TAG$INPUT_USER" ]; then
+            echo "follow_upstream chooses the tag and the driver. Leave tag and nvidia_userspace_version empty." >&2; exit 1
+          fi
+          upstream="$(nodes/helios/newest-upstream-tag.sh)"
+          tag="${upstream}-nvidia-${NVIDIA_VERSION}"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            # Only a clear "not found" answer lets the build go on. Any other failure stops the run.
+            if out="$(docker manifest inspect "${IMAGE}:${tag}" 2>&1)"; then
+              echo "tag exists: ${IMAGE}:${tag}. Nothing to build or push." | tee -a "$GITHUB_STEP_SUMMARY"
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              exit 0
+            elif ! printf '%s' "$out" | grep -qi -E 'manifest unknown|no such manifest'; then
+              echo "Cannot tell if the tag exists: $out" >&2; exit 1
+            fi
+          fi
+          echo "Upstream tag: ${upstream}"
+          # The toolchain has the same version as the Hadron part of the base tag.
+          echo "hadron_version=${upstream%%-*}" >> "$GITHUB_OUTPUT"
+          echo "base_image_tag=${upstream}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
       - name: Choose the tag
         id: tag
         env:
           INPUT_TAG: ${{ inputs.tag }}
+          FOLLOW_TAG: ${{ steps.follow.outputs.tag }}
           HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
         run: |
           if [ -n "$INPUT_TAG" ]; then
@@ -62,6 +105,9 @@ jobs:
               echo "Cannot tell if the tag exists: $out" >&2; exit 1
             fi
             echo "value=$INPUT_TAG" >> "$GITHUB_OUTPUT"
+            echo "expires=" >> "$GITHUB_OUTPUT"
+          elif [ -n "$FOLLOW_TAG" ] && [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            echo "value=$FOLLOW_TAG" >> "$GITHUB_OUTPUT"
             echo "expires=" >> "$GITHUB_OUTPUT"
           else
             echo "value=test-${HEAD_SHA::12}" >> "$GITHUB_OUTPUT"
@@ -80,9 +126,11 @@ jobs:
           echo "value=$v" >> "$GITHUB_OUTPUT"
 
       - name: Set up Docker Buildx
+        if: ${{ steps.follow.outputs.skip != 'true' }}
         uses: docker/setup-buildx-action@v4
 
       - name: Build
+        if: ${{ steps.follow.outputs.skip != 'true' }}
         uses: docker/build-push-action@v6
         with:
           context: nodes/helios
@@ -90,17 +138,21 @@ jobs:
             JOBS=2
             NVIDIA_VERSION=${{ env.NVIDIA_VERSION }}
             NVIDIA_USERSPACE_VERSION=${{ steps.user.outputs.value }}
+            ${{ steps.follow.outputs.hadron_version != '' && format('HADRON_VERSION={0}', steps.follow.outputs.hadron_version) || '' }}
+            ${{ steps.follow.outputs.base_image_tag != '' && format('BASE_IMAGE_TAG={0}', steps.follow.outputs.base_image_tag) || '' }}
           labels: |
             ${{ steps.tag.outputs.expires != '' && format('quay.expires-after={0}', steps.tag.outputs.expires) || '' }}
           tags: helios:ci
           load: true
 
       - name: Install the check tools
+        if: ${{ steps.follow.outputs.skip != 'true' }}
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends dracut-core zstd kmod
 
       - name: Check the image
+        if: ${{ steps.follow.outputs.skip != 'true' }}
         env:
           USER_VERSION: ${{ steps.user.outputs.value }}
         run: |
@@ -109,7 +161,7 @@ jobs:
 
       # Pull requests from forks have no secrets, so they stop after the check.
       - name: Login to Quay
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        if: ${{ steps.follow.outputs.skip != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         uses: docker/login-action@v4
         with:
           registry: quay.io
@@ -117,10 +169,19 @@ jobs:
           password: ${{ secrets.REGISTRY_PASSWORD }}
 
       - name: Push
-        if: ${{ github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository }}
+        if: ${{ steps.follow.outputs.skip != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         env:
           TAG: ${{ steps.tag.outputs.value }}
+          EXPIRES: ${{ steps.tag.outputs.expires }}
         run: |
+          # A durable tag is never overwritten. Another run can push it during the build, so ask again.
+          if [ -z "$EXPIRES" ]; then
+            if out="$(docker manifest inspect "${IMAGE}:${TAG}" 2>&1)"; then
+              echo "Tag ${TAG} appeared during the build. Nothing pushed." >&2; exit 1
+            elif ! printf '%s' "$out" | grep -qi -E 'manifest unknown|no such manifest'; then
+              echo "Cannot tell if the tag exists: $out" >&2; exit 1
+            fi
+          fi
           docker tag helios:ci "${IMAGE}:${TAG}"
           docker push "${IMAGE}:${TAG}"
           echo "Pushed ${IMAGE}:${TAG}" >> "$GITHUB_STEP_SUMMARY"

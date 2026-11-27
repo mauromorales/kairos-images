@@ -38,6 +38,10 @@ WORKDIR /build
 RUN kver=$(cat /usr/share/kernel-misc/kernel-version) && src=${kver%.0} && curl -fL https://cdn.kernel.org/pub/linux/kernel/v${kver%%.*}.x/linux-${src}.tar.xz -o linux-${src}.tar.xz
 RUN kver=$(cat /usr/share/kernel-misc/kernel-version) && src=${kver%.0} && tar -xf linux-${src}.tar.xz && mv linux-${src} linux
 WORKDIR /build/linux
+# objtool, a build tool of the kernel, gives sigaltstack SIGSTKSZ bytes, which is 8192 here. Some
+# build machines need a larger signal stack for their CPU, and the build then stops with
+# "init_signal_handler: sigaltstack failed: Out of memory". 64 KiB is enough on each of them.
+RUN if [ -f tools/objtool/signal.c ]; then sed -i 's/\bSIGSTKSZ\b/65536/g' tools/objtool/signal.c; fi
 RUN cp /usr/share/kernel-misc/kernel-config .config
 # Disable module signing cleanly
 RUN ./scripts/config --disable MODULE_SIG

@@ -1,0 +1,104 @@
+name: 'Make the ISO of the Hadron riscv64 VisionFive 2 image'
+
+# The Hadron riscv64 base is built by hand (nodes/hadron-riscv64-vf2/README.md) and the
+# image is pushed to quay.io/mauromorales/kairos-riscv64. This workflow only turns a
+# pushed image into a live ISO with AuroraBoot and makes one DRAFT release. Nothing is
+# public until the draft is published by hand.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: 'Tag in quay.io/mauromorales/kairos-riscv64 (for example hadron-v0.7.0-standard-riscv64-visionfive2-0.1.0-k0sv1.36.4)'
+        required: true
+        type: string
+      release_version:
+        description: 'Version of the image, as in its tag (for example 0.1.0)'
+        required: true
+        type: string
+
+permissions:
+  contents: write # only used to create the draft release
+
+jobs:
+  iso:
+    runs-on: ubuntu-24.04
+    env:
+      IMAGE: quay.io/mauromorales/kairos-riscv64:${{ inputs.image_tag }}
+      VERSION: ${{ inputs.release_version }}
+    steps:
+      - name: Check the tag
+        run: |
+          case "$VERSION" in *[!0-9.]*|'') echo "release_version must be like 0.1.0" >&2; exit 1;; esac
+          case "${{ inputs.image_tag }}" in hadron-v*-riscv64-visionfive2-"$VERSION"-k0sv*) ;; *) echo "tag must be hadron-v<x>-standard-riscv64-visionfive2-$VERSION-k0sv<y>" >&2; exit 1;; esac
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Login to Quay
+        uses: docker/login-action@v3
+        with:
+          registry: quay.io
+          username: ${{ secrets.REGISTRY_USERNAME }}
+          password: ${{ secrets.REGISTRY_PASSWORD }}
+      # Pulling by platform does not need QEMU: AuroraBoot only reads the filesystem.
+      - name: Pull the image
+        run: docker pull --platform linux/riscv64 "$IMAGE"
+      - name: Checkout AuroraBoot
+        uses: actions/checkout@v6
+        with:
+          repository: mauro-agent/AuroraBoot
+          ref: fix/riscv64-raw-efi-no-shim
+          path: auroraboot-src
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: auroraboot-src/go.mod
+      - name: Install AuroraBoot build and ISO dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libpcsclite-dev squashfs-tools xorriso dosfstools mtools
+      - name: Build AuroraBoot
+        working-directory: auroraboot-src
+        run: |
+          mkdir -p internal/ui/dist
+          touch internal/ui/dist/.gitkeep
+          go build -ldflags "-X main.version=v0.0.0-riscv64-node" -o ../auroraboot .
+      - name: Build ISO
+        run: |
+          mkdir -p output
+          name="kairos-${{ inputs.image_tag }}"
+          echo "ISO_NAME=$name" >> "$GITHUB_ENV"
+          sudo ./auroraboot --debug build-iso --arch riscv64 --output ./output/ \
+            --override-name "$name" "docker:$IMAGE"
+          sudo chown -R "$(id -u):$(id -g)" output
+          ls -l output
+          size=$(stat -c %s "output/$name.iso")
+          # GitHub rejects release assets of 2 GiB or more.
+          if [ "$size" -ge 2147483648 ]; then
+            echo "ISO is $size bytes, over the 2 GiB release asset limit" >&2
+            exit 1
+          fi
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="hadron-riscv64-vf2-k0s-v${VERSION}"
+          sha256="$(cut -d' ' -f1 "output/$ISO_NAME.iso.sha256")"
+          cat > notes.md <<NOTES
+          EXPERIMENT. Hadron-based image for the StarFive VisionFive 2 (JH7110, riscv64) with k0s. Not booted on the board yet. Not an official Kairos or Hadron release.
+
+          | Component | Version |
+          |---|---|
+          | Board | StarFive VisionFive 2 |
+          | Base | Hadron v0.7.0, kernel 7.3.6-hadron, built by hand for riscv64 |
+          | k0s | v1.36.4+k0s.0, unofficial riscv64 build, release \`k0s-riscv64-v1.36.4-k0s.0\` of this repository |
+          | Display | none from the kernel: use serial or SSH |
+
+          Container image: \`${IMAGE}\`
+          ISO SHA256: \`${sha256}\`
+
+          Install steps and the U-Boot 2025.10 update: nodes/kairos-riscv64-vf2/README.md. The cloud-config key for k0s is \`k0s:\` or \`k0s-worker:\`.
+          NOTES
+          gh release create "$tag" \
+            "output/$ISO_NAME.iso" "output/$ISO_NAME.iso.sha256" \
+            --draft --prerelease \
+            --title "Hadron riscv64 VisionFive 2 v${VERSION} (k0s, experimental)" \
+            --notes-file notes.md

@@ -1,3 +1,4 @@
+# syntax=docker/dockerfile:1
 # Hadron (riscv64) + Kairos + our riscv64 k0s, for the StarFive VisionFive 2.
 # Hadron publishes no riscv64 image, so the base is built by hand (see README.md) and
 # is called hadron-init:latest by Hadron's Makefile. Build this layer with:

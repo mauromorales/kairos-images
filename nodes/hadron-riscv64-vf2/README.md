@@ -46,9 +46,10 @@ The workflow `build-hadron-riscv64-vf2-iso.yaml` takes a pushed image tag and ma
 the live ISO with AuroraBoot, as the Ubuntu VF2 release job does. It makes a draft
 release; nothing is public until you publish it.
 
-Install: use steps 1 to 3 of `../kairos-riscv64-vf2/README.md` (update U-Boot to 2025.10,
-boot the ISO, run `kairos-agent manual-install`). Skip its HDMI GRUB entry: this kernel has
-no display patches and the image has no `/boot/dtb`. Its example cloud-config is for k3s;
+Install: follow steps 1 to 4 of `../kairos-riscv64-vf2/README.md`, with two changes. In
+step 2 take the ISO from this image's release, not from the Ubuntu one. In step 4 skip the
+HDMI GRUB entry: this kernel has no display patches and the image has no `/boot/dtb`. Wait
+for the install to finish before you cut the power. Its example cloud-config is for k3s;
 write a `k0s:` or `k0s-worker:` stanza instead.
 
 The image version (`0.1.0`) is in the tag and the release, not in `os-release`: the Kairos

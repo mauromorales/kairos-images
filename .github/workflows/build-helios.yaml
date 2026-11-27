@@ -172,7 +172,16 @@ jobs:
         if: ${{ steps.follow.outputs.skip != 'true' && (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) }}
         env:
           TAG: ${{ steps.tag.outputs.value }}
+          EXPIRES: ${{ steps.tag.outputs.expires }}
         run: |
+          # A durable tag is never overwritten. Another run can push it during the build, so ask again.
+          if [ -z "$EXPIRES" ]; then
+            if out="$(docker manifest inspect "${IMAGE}:${TAG}" 2>&1)"; then
+              echo "Tag ${TAG} appeared during the build. Nothing pushed." >&2; exit 1
+            elif ! printf '%s' "$out" | grep -qi -E 'manifest unknown|no such manifest'; then
+              echo "Cannot tell if the tag exists: $out" >&2; exit 1
+            fi
+          fi
           docker tag helios:ci "${IMAGE}:${TAG}"
           docker push "${IMAGE}:${TAG}"
           echo "Pushed ${IMAGE}:${TAG}" >> "$GITHUB_STEP_SUMMARY"

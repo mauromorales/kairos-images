@@ -16,9 +16,10 @@ min_kairos_minor=5
 fetch_tags() {
   local page=1 body
   while :; do
+    # set -e is off inside $(...), so a failed page returns here. A partial list must not be used.
     body="$(curl -fsS --retry 3 --max-time 60 \
-      "https://quay.io/api/v1/repository/${repo}/tag/?limit=100&onlyActiveTags=true&filter_tag_name=like:-k0s-v1.36.&page=${page}")"
-    jq -r '.tags[].name' <<<"$body"
+      "https://quay.io/api/v1/repository/${repo}/tag/?limit=100&onlyActiveTags=true&filter_tag_name=like:-k0s-v1.36.&page=${page}")" || return 1
+    jq -r '.tags[].name' <<<"$body" || return 1
     [ "$(jq -r '.has_additional' <<<"$body")" = "true" ] || break
     page=$((page + 1))
     if [ "$page" -gt 100 ]; then

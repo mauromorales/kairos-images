@@ -82,8 +82,11 @@ that tag with the Hadron toolchain of the same version, runs `test-image.sh`, an
 `<upstream tag>-nvidia-<driver version>`. When that tag exists, the run logs `tag exists` and builds
 nothing.
 
-- A change in this directory does not rebuild an existing tag. To ship it before the next upstream
-  release, run the workflow by hand with a new `tag`. Such a build uses the `Dockerfile` defaults.
+- A change in this directory does not rebuild an existing tag. It ships with the next upstream
+  release. A run by hand with a `tag` is not a way to ship it sooner: that build uses the
+  `Dockerfile` defaults, an older base than the followed tags.
+- A Hadron release without a newer Kairos or k0s version is picked only when it is a new tag for the
+  newest Kairos and k0s version.
 - A new k0s minor version or Kairos 5 needs a change to the pattern in `newest-upstream-tag.sh`.
 - To run it now, run the workflow by hand with `follow_upstream` checked. From a branch it pushes
   only an expiring test tag.

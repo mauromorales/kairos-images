@@ -5,6 +5,10 @@ name: 'Make the ISO of the Hadron riscv64 VisionFive 2 image'
 # pushed image into a live ISO with AuroraBoot and makes one DRAFT release. Nothing is
 # public until the draft is published by hand.
 on:
+  pull_request:
+    paths:
+      - 'nodes/hadron-riscv64-vf2/**'
+      - '.github/workflows/build-hadron-riscv64-vf2-iso.yaml'
   workflow_dispatch:
     inputs:
       image_tag:
@@ -20,7 +24,21 @@ permissions:
   contents: write # only used to create the draft release
 
 jobs:
+  # Runs on pull requests: the ISO job needs a pushed image, so a pull request only
+  # checks that the Dockerfile parses and that the workflow is valid YAML.
+  lint:
+    if: ${{ github.event_name == 'pull_request' }}
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Dockerfile check
+        run: docker buildx build --check --build-arg BASE=alpine nodes/hadron-riscv64-vf2
+      - name: Workflow is valid YAML
+        run: python3 -c "import yaml,sys; yaml.safe_load(open('.github/workflows/build-hadron-riscv64-vf2-iso.yaml'))"
+
   iso:
+    if: ${{ github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-24.04
     env:
       IMAGE_TAG: ${{ inputs.image_tag }}

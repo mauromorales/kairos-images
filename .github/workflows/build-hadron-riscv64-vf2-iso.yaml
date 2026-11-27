@@ -23,13 +23,22 @@ jobs:
   iso:
     runs-on: ubuntu-24.04
     env:
-      IMAGE: quay.io/mauromorales/kairos-riscv64:${{ inputs.image_tag }}
+      IMAGE_TAG: ${{ inputs.image_tag }}
       VERSION: ${{ inputs.release_version }}
     steps:
       - name: Check the tag
         run: |
-          case "$VERSION" in *[!0-9.]*|'') echo "release_version must be like 0.1.0" >&2; exit 1;; esac
-          case "${{ inputs.image_tag }}" in hadron-v*-riscv64-visionfive2-"$VERSION"-k0sv*) ;; *) echo "tag must be hadron-v<x>-standard-riscv64-visionfive2-$VERSION-k0sv<y>" >&2; exit 1;; esac
+          case "$IMAGE_TAG$VERSION" in *[!A-Za-z0-9._+-]*|'') echo "image_tag and release_version may only hold letters, digits and . _ + -" >&2; exit 1;; esac
+          case "$VERSION" in *[!0-9.]*|''|.*|*.|*..*) echo "release_version must be like 0.1.0" >&2; exit 1;; esac
+          # hadron-v<hadron>-standard-riscv64-visionfive2-<version>-k0sv<k0s>
+          re='^hadron-(v[0-9][0-9.]*)-standard-riscv64-visionfive2-([0-9][0-9.]*)-k0sv([0-9][0-9.]*)$'
+          [[ "$IMAGE_TAG" =~ $re ]] || { echo "tag must look like hadron-v0.7.0-standard-riscv64-visionfive2-$VERSION-k0sv1.36.4" >&2; exit 1; }
+          [ "${BASH_REMATCH[2]}" = "$VERSION" ] || { echo "release_version $VERSION is not the version in the tag (${BASH_REMATCH[2]})" >&2; exit 1; }
+          {
+            echo "IMAGE=quay.io/mauromorales/kairos-riscv64:$IMAGE_TAG"
+            echo "HADRON_VERSION=${BASH_REMATCH[1]}"
+            echo "K0S_VERSION=${BASH_REMATCH[3]}"
+          } >> "$GITHUB_ENV"
       - name: Checkout
         uses: actions/checkout@v6
       - name: Login to Quay
@@ -64,7 +73,7 @@ jobs:
       - name: Build ISO
         run: |
           mkdir -p output
-          name="kairos-${{ inputs.image_tag }}"
+          name="kairos-$IMAGE_TAG"
           echo "ISO_NAME=$name" >> "$GITHUB_ENV"
           sudo ./auroraboot --debug build-iso --arch riscv64 --output ./output/ \
             --override-name "$name" "docker:$IMAGE"
@@ -82,20 +91,24 @@ jobs:
         run: |
           tag="hadron-riscv64-vf2-k0s-v${VERSION}"
           sha256="$(cut -d' ' -f1 "output/$ISO_NAME.iso.sha256")"
+          df=nodes/hadron-riscv64-vf2/Dockerfile
+          kairos="$(grep -oP '^ARG KAIROS_VERSION=\K.*' $df)"
+          k0s_release="$(grep -oP '^ARG K0S_RISCV64_RELEASE=\K.*' $df)"
           cat > notes.md <<NOTES
           EXPERIMENT. Hadron-based image for the StarFive VisionFive 2 (JH7110, riscv64) with k0s. Not booted on the board yet. Not an official Kairos or Hadron release.
 
           | Component | Version |
           |---|---|
           | Board | StarFive VisionFive 2 |
-          | Base | Hadron v0.7.0, kernel 7.3.6-hadron, built by hand for riscv64 |
-          | k0s | v1.36.4+k0s.0, unofficial riscv64 build, release \`k0s-riscv64-v1.36.4-k0s.0\` of this repository |
+          | Base | Hadron ${HADRON_VERSION} (a commit of \`main\` after the tag, see nodes/hadron-riscv64-vf2/README.md), built by hand for riscv64 |
+          | provider-kairos | Kairos ${kairos} riscv64 release |
+          | k0s | v${K0S_VERSION}+k0s.0, unofficial riscv64 build, release \`${k0s_release}\` of this repository (not an official k0s release) |
           | Display | none from the kernel: use serial or SSH |
 
           Container image: \`${IMAGE}\`
           ISO SHA256: \`${sha256}\`
 
-          Install steps and the U-Boot 2025.10 update: nodes/kairos-riscv64-vf2/README.md. The cloud-config key for k0s is \`k0s:\` or \`k0s-worker:\`.
+          Install: use steps 1 to 3 of nodes/kairos-riscv64-vf2/README.md (update U-Boot to 2025.10, boot the ISO, run \`kairos-agent manual-install\`). Skip its HDMI GRUB entry: this kernel has no display patches and there is no \`/boot/dtb\`. Its example cloud-config is for k3s: write a \`k0s:\` or \`k0s-worker:\` stanza instead.
           NOTES
           gh release create "$tag" \
             "output/$ISO_NAME.iso" "output/$ISO_NAME.iso.sha256" \

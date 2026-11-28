@@ -32,7 +32,7 @@ flowchart LR
         mowa -->|osascript / AppleScript| messages
     end
 
-    subgraph haHost["homeassistant · Raspberry Pi 4 (HA OS)"]
+    subgraph haHost["homeassistant · HA OS in a VM on polaris"]
         ha["Mosquitto broker<br/>+ Home Assistant"]
         entity["event.* (doorbell)"]
         ha -->|MQTT discovery| entity
@@ -46,7 +46,9 @@ flowchart LR
 `thuroros` reaches mowa at `polaris.home.arpa`, a DNS name that AdGuard Home
 serves, and Home Assistant at `homeassistant.local` over mDNS, because it has no
 DNS record yet. AdGuard Home runs in the Home Assistant VM, so the iMessage path
-needs that VM to resolve the name.
+needs that VM to resolve the name. The script has no mDNS fallback: if the
+lookup fails, that press sends no iMessage. The same VM runs the MQTT broker, so
+when it is down, both paths fail.
 
 ## The two nodes
 
@@ -95,7 +97,7 @@ this pipeline: the local hops are sub-second.
 ## Home Assistant (MQTT)
 
 On every press, `doorbell` also publishes to the Mosquitto broker on the
-`homeassistant` Pi, independently of the mowa/iMessage path above:
+`homeassistant` VM on `polaris`, independently of the mowa/iMessage path above:
 
 - **Once, retained, at service start**, a discovery message to
   `homeassistant/event/thuroros_doorbell/config`. Home Assistant reads this and

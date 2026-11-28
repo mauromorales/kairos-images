@@ -43,9 +43,10 @@ flowchart LR
     push -->|Local Push, WebSocket| phone
 ```
 
-All three hosts advertise on the LAN over mDNS (avahi / Bonjour), so `thuroros`
-reaches mowa at `polaris.local` and Home Assistant at `homeassistant.local`:
-no static IPs.
+`thuroros` reaches mowa at `polaris.home.arpa`, a DNS name that AdGuard Home
+serves, and Home Assistant at `homeassistant.local` over mDNS, because it has no
+DNS record yet. AdGuard Home runs in the Home Assistant VM, so the iMessage path
+needs that VM to resolve the name.
 
 ## The two nodes
 
@@ -83,7 +84,7 @@ each via `osascript` → AppleScript → Messages.app → iMessage.
 
 1. The button is pressed → GPIO 23 goes low.
 2. `doorbell` reads `{to, message}` from the config file.
-3. It `POST`s to `http://polaris.local:8080/api/messages`.
+3. It `POST`s to `http://polaris.home.arpa:8080/api/messages`.
 4. mowa expands the group to phone number(s) and tells Messages.app to send.
 5. Messages delivers over iMessage to my phone.
 

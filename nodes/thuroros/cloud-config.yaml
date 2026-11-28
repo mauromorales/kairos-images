@@ -118,7 +118,7 @@ stages:
                 """Send a doorbell message to mowa which sends it to my phone."""
                 
                 # API endpoint
-                url = "http://polaris.local:8080/api/messages"
+                url = "http://polaris.home.arpa:8080/api/messages"
                 
                 # JSON payload
                 payload = {
@@ -155,9 +155,9 @@ stages:
                         print(f"✅ Doorbell message sent successfully to '{to}'!")
 
                 except requests.exceptions.ConnectionError:
-                    print("❌ Connection error: Could not connect to polaris.local")
+                    print("❌ Connection error: Could not connect to polaris.home.arpa")
                 except requests.exceptions.Timeout:
-                    print("⏱️ Timeout: polaris.local did not respond in time (Messages may be stuck); giving up on this press")
+                    print("⏱️ Timeout: polaris.home.arpa did not respond in time (Messages may be stuck); giving up on this press")
                 except requests.exceptions.RequestException as e:
                     print(f"❌ Request error: {e}")
                 except Exception as e:
